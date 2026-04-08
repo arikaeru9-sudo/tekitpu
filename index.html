@@ -1,0 +1,138 @@
+<!doctype html>
+<html>
+<head>
+    <title>Transformers.js Chat UI</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .input-area {
+            margin-bottom: 20px;
+        }
+        #userInput {
+            width: 80%;
+            padding: 10px;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #submitButton {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #submitButton:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .response-area {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+        }
+        #loadingIndicator {
+            display: none;
+            color: #666;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Transformers.js Chat UI</h1>
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="メッセージを入力してください...">
+            <button id="submitButton">送信</button>
+        </div>
+        <div id="loadingIndicator">処理中...</div>
+        <div class="response-area" id="responseArea"></div>
+    </div>
+
+    <script type="module">
+        import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.1/dist/transformers.min.js';
+
+        let generator;
+        let isProcessing = false;
+
+        // UIの要素を取得
+        const userInput = document.getElementById('userInput');
+        const submitButton = document.getElementById('submitButton');
+        const responseArea = document.getElementById('responseArea');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+
+        // パイプラインの初期化
+        async function initializePipeline() {
+            try {
+                isProcessing = true;
+                loadingIndicator.style.display = 'block';
+                submitButton.disabled = true;
+
+                // パイプラインの準備
+                generator = await pipeline(
+                    "text-generation",
+                    "onnx-community/Qwen2.5-0.5B-Instruct",
+                    { dtype: "q4", device: "webgpu" }
+                );
+            } catch (error) {
+                responseArea.textContent = "エラー: モデルの読み込みに失敗しました: " + error.message;
+            } finally {
+                isProcessing = false;
+                loadingIndicator.style.display = 'none';
+                submitButton.disabled = false;
+            }
+        }
+
+        // メッセージを送信して応答を取得する関数
+        async function generateResponse(userMessage) {
+            if (isProcessing) return;
+            
+            try {
+                isProcessing = true;
+                loadingIndicator.style.display = 'block';
+                submitButton.disabled = true;
+
+                // メッセージの準備
+                const messages = [
+                    { role: "system", content: "あなたは役立つアシスタントです。" },
+                    { role: "user", content: userMessage }
+                ];
+
+                // 推論の実行
+                const output = await generator(messages, { 
+                    max_new_tokens: 256,
+                    do_sample: true,
+                    temperature: 0.3,
+                });
+                const response = output[0].generated_text.at(-1).content;
+                responseArea.textContent = response;
+            } catch (error) {
+                responseArea.textContent = "エラー: " + error.message;
+            } finally {
+                isProcessing = false;
+                loadingIndicator.style.display = 'none';
+                submitButton.disabled = false;
+            }
+        }
+
+        // クリック時に呼ばれる
+        submitButton.addEventListener('click', () => {
+            const message = userInput.value.trim();
+            if (message) {
+                generateResponse(message);
+                userInput.value = '';
+            }
+        });
+
+        // 初期化
+        initializePipeline();
+    </script>
+</body>
+</html>
